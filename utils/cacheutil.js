@@ -77,12 +77,12 @@ class OneCache {
         } else {
             msg.date = Date.now() + this.LIST_MAX_MILLSEC;
             if (!pt.sp_list) pt.sp_list = {};
-            pt.sp_list[sp_page] = msg;
+            pt.sp_list[sp_page] = { list: msg.data.list, nextToken: msg.data.nextToken };
             if (sp_page !== 0) {
                 let prev = Object.keys(pt.sp_list).find(k => {
-                    return pt.sp_list[k].data.nextToken === sp_page;
+                    return pt.sp_list[k].nextToken === sp_page;
                 });
-                if (prev) msg.data.prev = "?sp_page=" + prev;
+                if (prev) pt.sp_list[sp_page].prev = "?sp_page=" + prev;
             }
         }
 
@@ -156,9 +156,10 @@ class OneCache {
         } else if (pt.type === 0 && pt.date > Date.now()) {
             msg = Msg.file(pt.data, pt.url);
         } else if (pt.sp_list && pt.sp_list[sp_page] && pt.sp_list[sp_page].date > Date.now()) {
-            msg = pt.sp_list[sp_page];
+            msg = Msg.list(pt.sp_list[sp_page].list, pt.sp_list[sp_page].nextToken);
+            if (pt.sp_list[sp_page].prev) msg.data.prev = pt.sp_list[sp_page].list;
         }
-        if(msg)msg.isCache = true;
+        if (msg) msg.isCache = true;
         return msg;
     }
 

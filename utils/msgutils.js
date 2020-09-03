@@ -69,7 +69,7 @@ function Msg_html_json(statusCode, obj, headers) {
     return {
         type: 3, //3_html 固定值
         statusCode: statusCode,
-        headers: headers || { 'Content-Type': 'application/json' },
+        headers: Object.assign({}, headers, { 'Content-Type': 'application/json' }),
         data: {
             html: JSON.stringify(obj)
         }

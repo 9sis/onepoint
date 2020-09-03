@@ -1,22 +1,33 @@
-const querystring = require('querystring');
-const fs = require('fs');
-const path = require('path');
+const process = require('process');
+process.env['TENCENTCLOUD_SECRETID']
+process.env['TENCENTCLOUD_SECRETKEY']
+process.env['TENCENTCLOUD_SESSIONTOKEN']
 const { op } = require('./main');
 
-let _config = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../config.json'), 'utf8'));
-
-if (_config.G_CONFIG['x-scf-cos-enabled']) op.initialize({ name: "scf", readConfig, writeConfig });//支持保存功能
-else op.initialize({ name: "scf", readConfig });//只读,未提供保存功能
+op.initialize({
+    name: "scf",
+    readConfig,
+    writeConfig,
+    firstInstall,
+    installParam: [{
+        name: 'nothing',
+        required: true,
+        desc: '测试用, 配置只会存到缓存中, 并不会写入系统. 每次scf重启后显示此页面'
+    }]
+});
 
 //@usage 如果需要使用保存功能,需要借用腾讯的cos,地区建议和云函数所在地区一致,内网之间流量免费
 var COS = require('cos-nodejs-sdk-v5');
 
 const cosConfig = {
-    SecretId: _config.G_CONFIG['x-scf-cos-secretId'],
-    SecretKey: _config.G_CONFIG['x-scf-cos-secretKey'],
-    Bucket: _config.G_CONFIG['x-scf-cos-bucket'],
-    Region: _config.G_CONFIG['x-scf-cos-region']
+    SecretId: '',
+    SecretKey: '',
+    Bucket: '',
+    Region: '',
+    Key: ''
 }
+
+let _config;
 
 var cos = new COS({
     SecretId: cosConfig.SecretId,
@@ -24,29 +35,27 @@ var cos = new COS({
 });
 
 exports.main_handler = async (event, context, callback) => {
+    event.headers['x-real-ip'] = event['requestContext']['sourceIp'];
 
-    let url = event['path'] + '?' + querystring.stringify(event['queryString']);
-
-    let _event = op.genEvent(event['httpMethod'], url, event.headers, event.body, event['requestContext']['sourceIp'], '', event['queryString']);
-
+    let p_12 = event.path;
     //处理域名和路径,分离得到 p0 p12
     let requestContext_path = event['requestContext']['path'];
     if (requestContext_path.endsWith('/')) requestContext_path = requestContext_path.slice(0, -1);// / or /abc/
     if (event['headers']['host'].startsWith(event['requestContext']['serviceId'])) {//长域名
-        _event.splitPath['p0'] = `/${event['requestContext']['stage']}${requestContext_path}`;
-        _event.splitPath['p_12'] = decodeURIComponent(event['path']).slice(requestContext_path.length) || '/';//  只有scf网关不规范 ,例如 /abc 前者才为
+        event.headers['x-op-p0'] = `/${event['requestContext']['stage']}${requestContext_path}`;
+        p_12 = p_12.slice(requestContext_path.length) || '/';//  只有scf网关不规范 ,例如 /abc 前者才为
     }
-
-    return await op.handleEvent(_event);
+    return await op.handleRaw(event.httpMethod, p_12, event.headers, event.body, event.queryString);
 }
 
 async function readConfig() {
-    if (!_config.G_CONFIG['x-scf-cos-enabled']) return _config;
+    if (_config) throw new Error('未配置');
+    return _config;
     return new Promise((resolve, reject) => {
         cos.getObject({
             Bucket: cosConfig.Bucket,
             Region: cosConfig.Region,
-            Key: 'onepoint-config.json',
+            Key: cosConfig.Key,
         }, function (err, data) {
             if (err) reject(err);
             else resolve(JSON.parse(String(data.Body)));
@@ -55,15 +64,22 @@ async function readConfig() {
 }
 
 async function writeConfig(config) {
+    _config = config;
+    return;
     return new Promise((resolve, reject) => {
         cos.putObject({
             Bucket: cosConfig.Bucket,
             Region: cosConfig.Region,
-            Key: 'onepoint-config.json',
+            Key: cosConfig.Key,
             Body: JSON.stringify(config),
         }, function (err) {
             if (err) reject(err);
             else resolve();
         });
     });
+}
+
+async function firstInstall(config) {
+    await writeConfig(config);
+    return '配置写入成功 下次scf重启需要重新配置';
 }

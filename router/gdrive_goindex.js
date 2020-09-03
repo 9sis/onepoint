@@ -1,11 +1,21 @@
 const { Msg, urlSpCharEncode } = require('../utils/msgutils');
 const { axios } = require('../utils/nodeutils');
 
-let mconfig;
+exports.configParam = [{
+    name: 'cf_url',
+    required: true,
+    desc: ''
+}, {
+    name: 'cf_password',
+    desc: ''
+}, {
+    name: 'root',
+    desc: ''
+}];
 
 exports.ls = ls;
-async function ls(path) {
-    let data = (await axios.post(mconfig.cfurl + path, { "password": mconfig.password })).data;
+async function ls(path, mconfig) {
+    let data = (await axios.post(mconfig.cf_url + path, { "password": mconfig.cf_password })).data;
     if (!data) return Msg.info(404);
     if (!data.files) {//文件
         if (data['size'] === undefined) throw Msg.info(403, Msg.constants.Incomplete_folder_path);
@@ -16,7 +26,7 @@ async function ls(path) {
             mime: data['mimeType'],
             time: data['modifiedTime']
         };
-        return Msg.file(fileinfo, mconfig.cfurl + urlSpCharEncode(path));
+        return Msg.file(fileinfo, mconfig.cf_url + urlSpCharEncode(path));
     } else {//dir
         let rDatas = [];
         data.files.forEach(e => {
@@ -39,12 +49,11 @@ async function ls(path) {
 }
 
 exports.func = async (spConfig, cache, event) => {
-    mconfig = spConfig;
     let root = spConfig.root || '';
     let p2 = root + event.p2;
     switch (event.cmd) {
         case 'ls':
-            return await ls(p2);
+            return await ls(p2, spConfig);
         default:
             return Msg.info(400, Msg.constants.No_such_command);
     }

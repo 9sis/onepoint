@@ -43,7 +43,7 @@ function render(responseMsg, event, G_CONFIG) {
             html += `</select><div class="input-group-append"><button class="btn btn-outline-secondary" id="proxy-submit" type="button">Proxy</button><button type="button" class="btn btn-outline-secondary"><a href="${url}" id="down-btn-a">Down</a></button><button type="button" class="btn btn-outline-secondary" id="share-btn">Share</button></div></div>`;
             html += `<div class="border rounded my-3 p-3">`;
             if (type === 'image') {
-                html += `<img src="${url}" class="rounded mx-auto d-block" max-width="100%">`;
+                html += `<img src="${url}" class="rounded mx-auto d-block img-fluid" max-width="100%">`;
             } else if (type === 'video') {
                 html += `<link class="dplayer-css" rel="stylesheet" href="//cdn.bootcss.com/dplayer/1.25.0/DPlayer.min.css">
                 <script src="//cdn.bootcss.com/dplayer/1.25.0/DPlayer.min.js"></script>

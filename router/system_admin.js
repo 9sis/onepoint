@@ -14,6 +14,17 @@ exports.func = async (spConfig, cache, event) => {
     onepoint = spConfig['onepoint'];
     _event = event;
     event.noRender = true;
+
+    if (onepoint.config.installFailMsg && p2 === '/install/hello-world') {
+        if (event.method === 'GET') return Msg.html(200, installHtml(onepoint.config.installFailMsg + '\n请先配置安装信息', '', onepoint.installParam.concat(onepoint.adapter.installParam)));
+        let successMsg, failedMsg;
+        successMsg = await onepoint.adapter.firstInstall({ G_CONFIG: event.body }).catch((err) => { failedMsg = err.message });
+        if (failedMsg) return Msg.info(400, 'install failed: ' + failedMsg);
+        await onepoint.readConfig();
+        event.set_cookie.push({ n: 'ADMINTOKEN', v: onepoint.hashes.admin_password_date_hash, o: { path: '/' } });
+        return Msg.info(200, onepoint.config.installFailMsg ? 'read failed ' + onepoint.config.installFailMsg : (successMsg || 'install success'));
+    }
+
     if (p2.startsWith("/public/")) {
         switch (p2.slice(7)) {
             case '/site':
@@ -39,10 +50,38 @@ exports.func = async (spConfig, cache, event) => {
                 break;
         }
     }
-    if (!event.isadmin) { return Msg.html(401, 'only admin can use this api'); }
+
+   // if (!event.isadmin) return Msg.html(401, 'only admin can use this api');
+
+    if (p2.startsWith('/install/drive')) {
+        let match = /install\/drive\/(\w+)/.exec(p2);
+        if (match && match[1]) {
+            if (!onepoint.drivePlugins[match[1]]) return Msg.info(400, 'invalid drive type ' + match[1]);
+            if (event.method === 'GET') return Msg.html(200, installHtml('请填写相关信息, 当前已挂载: ' + JSON.stringify(Object.keys(onepoint.config.DRIVE_MAP)), '', onepoint.configParam.concat(onepoint.drivePlugins[match[1]].configParam)));
+            onepoint.config.DRIVE_MAP[event.body.path] = {
+                funcName: match[1],
+                spConfig: event.body,
+                desc: event.body.desc,
+                password: event.password,
+                hidden: event.body.hidden.split(',').filter(e => { return e.trim() })
+            };
+            delete event.body.path;
+            delete event.body.desc;
+            delete event.body.password;
+            delete event.body.hidden;
+            await onepoint.saveConfig();
+            return Msg.info(200, 'add drive success');
+        }
+        if (event.method === 'GET') return Msg.html(200, installHtml('请继续添加云盘, 当前云盘数量: ' + Object.keys(onepoint.config.DRIVE_MAP).length, '', [{ name: 'drive_type', required: true, select: Object.keys(onepoint.drivePlugins) }]));
+        return Msg.info(302, null, { Location: '/admin/install/drive/' + event.body.drive_type });
+    }
+    
+    if (!event.isadmin) return Msg.html(401, 'only admin can use this api');
+
     if (t = /\/ajax\/([^/]+)(.*)/.exec(p2)) {
         return await ajax_funcs[t[1]](t[2]);
     }
+    if (p2 !== '/') return Msg.html(302, null, { Location: '/admin/' });
     return Msg.html(200, vue_html, { 'Content-Type': 'text/html' });
 }
 
@@ -132,10 +171,7 @@ ajax_funcs['save'] = async () => {
         config.G_CONFIG = Object.assign(config.G_CONFIG, newConfig.G_CONFIG);
     }
     //@flag 这里先这样设置
-    if (newConfig.DOMAIN_MAP) {
-        config.DOMAIN_MAP = newConfig.DOMAIN_MAP;
-        config.DRIVE_MAP = newConfig.DRIVE_MAP;
-    } else if (newConfig.DRIVE_MAP) {
+    if (newConfig.DRIVE_MAP) {
         for (let k in config.DRIVE_MAP) {
             if (newConfig.DRIVE_MAP[k]) {
                 if (!newConfig.DRIVE_MAP[k].isNew) newConfig.DRIVE_MAP[k] = config.DRIVE_MAP[k];
@@ -144,9 +180,44 @@ ajax_funcs['save'] = async () => {
         }
         config.DRIVE_MAP = newConfig.DRIVE_MAP;
     }
-    onepoint.updateConfig(config);//body is an object
     await onepoint.saveConfig();
     return Msg.info(200, 'success');
 }
 
 const vue_html = fs.readFileSync(path.resolve(__dirname, '../views/admin/index.html')).toString();
+
+function installHtml(header, action, arr) {
+    var f = (arr) => {
+        let html = "";
+        for (let o of arr) {
+
+            html += `<div class="zi-card"><h4>${o.name}</h4><p class="zi-subtitle">${o.desc}</p>`
+            if (o.select) {
+                html += `<div class="zi-select-container small"><select  class="zi-select" name=${o.name}>`
+                for (let pa of o.select) {
+                    html += `<option>${pa}</option>`
+                }
+                html += `</select><i class="arrow zi-icon-up"></i></div>`
+            } else if (o.type == 'textarea') {
+                html += `<textarea class="zi-input" name=${o.name} ${o.default ? 'value=' + o.default : ''}></textarea>`
+            } else {
+                html += `<input class="zi-input" name=${o.name} ${o.default ? 'value=' + o.default : ''}>`
+            }
+            html += `</div>`
+        }
+        return html;
+    }
+    let html = `<head><meta charset="utf-8"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@geist-ui/style@latest/dist/style.css" /><style>.zi-card {margin: 1rem 0;}.zi-input{width:60%;}textarea.zi-input{height:6rem;}.zi-card>h4 {margin-bottom: 0;}.zi-rate-star.zi-icon-star {padding: 0 0.2rem;}</style></head><body class="zi-main zi-layout"><p class="zi-note">${header}</p><form method="post" action="${action}">`
+    let arr_required = [];
+    let arr_not_required = [];
+    arr.forEach(e => { if (e.required) arr_required.push(e); else arr_not_required.push(e); });
+    html += f(arr_required);
+    if (arr_not_required.length > 0) {
+        html += `<div class="zi-more"><button class="zi-btn circular small auto" id="show-more">Show More<i class="suffix zi-icon-up"></i></button></div><div id="not-required" style="display:none">`;
+        html += f(arr_not_required);
+        html += `</div>`;
+    }
+
+    html += `<div class="zi-rate" style="text-align: center;"><i class="zi-rate-star zi-icon-star active"></i><i class="zi-rate-star zi-icon-star"></i><i class="zi-rate-star zi-icon-star active"></i><i class="zi-rate-star zi-icon-star"></i><i class="zi-rate-star zi-icon-star active"></i><input class="zi-btn small" type="submit"><i class="zi-rate-star zi-icon-star"></i><i class="zi-rate-star zi-icon-star active"></i><i class="zi-rate-star zi-icon-star"></i><i class="zi-rate-star zi-icon-star active"></i><i class="zi-rate-star zi-icon-star"></i></div></form><script>document.getElementById('show-more').onclick=function(event){let flag = !!document.getElementById('not-required').style.display;document.getElementById('not-required').style.display=flag?'':'none';document.getElementById('show-more').innerHTML=flag?'Show Less<i class="suffix zi-icon-down"></i>':'Show More<i class="suffix zi-icon-up"></i>';return false;};</script></body>`
+    return html;
+}

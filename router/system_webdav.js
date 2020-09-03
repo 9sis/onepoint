@@ -1,8 +1,28 @@
 const {
     Msg
 } = require('../utils/msgutils');
+
+exports.configParam = [{
+    list: 'url',
+    required: true,
+    desc: '访问webdav的url'
+}, {
+    list: 'username',
+    required: true,
+    desc: '用户名'
+}, {
+    list: 'password',
+    required: true,
+    desc: '密码'
+}, {
+    list: 'root',
+    desc: '根目录路径, 请保证结尾不是 "/" 示例: /a/b/c '
+}];
+
+exports.commands = ['ls'];
+
 let webdav;
-exports.ls = ls;
+
 async function ls(path) {
     let data = await webdav.ls(path);
     if (!path.endsWith('/')) { //处理文件情况
@@ -84,7 +104,7 @@ class WebDav {
                 'Authorization': this.auth
             }
         }
-        if(this.baseURL.endsWith('/'))r.url=`${this.baseURL}${path.slice(1)}`;
+        if (this.baseURL.endsWith('/')) r.url = `${this.baseURL}${path.slice(1)}`;
         if (range) r.headers.Range = range;
         return r;
     }

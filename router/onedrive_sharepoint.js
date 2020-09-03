@@ -5,7 +5,17 @@ const { getmime } = require('../utils/nodeutils');
 
 let sharepoint;
 
-exports.ls = ls;
+exports.configParam = [{
+    name: 'share_url',
+    required: true,
+    desc: '分享链接, 例如 https://lovelearn-my.sharepoint.com/:f:/g/personal/admin_share_onesrc_cc/Es6CMetI4fJCr4GqWZ3uvA0BEnzJxxb4CU-iQr04VYomLQ?e=C9K35U'
+}, {
+    name: 'root',
+    desc: '根目录路径, 请保证结尾不是 "/" 示例: /a/b/c '
+}];
+
+exports.commands = ['ls'];
+
 async function ls(path) {
     try {
         let data = await sharepoint.spListData(path);
@@ -40,7 +50,7 @@ async function ls(path) {
     }
 }
 exports.func = async (spConfig, cache, event) => {
-    sharepoint = new SharePoint(spConfig['shareUrl']);
+    sharepoint = new SharePoint(spConfig.share_url);
     await sharepoint.init();
     let root = spConfig.root || '';
     let p2 = root + event.p2;

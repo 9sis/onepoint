@@ -1,8 +1,16 @@
 const { Msg } = require('../utils/msgutils');
 const { getmime } = require('../utils/nodeutils');
 
+exports.configParam = [{
+    list: 'nothing',
+    type: 'textarea',
+    desc: '一般用户用不到, 不提供配置方法了'
+}];
+
+exports.commands = ['ls', 'mkdir'];
+
 let list;
-exports.ls = ls;
+
 async function ls(p2) {
     let p = /^\/([^/]+)?$/.exec(p2);
     if (!p) return Msg.info(404, Msg.constants.Just_for_mounting);

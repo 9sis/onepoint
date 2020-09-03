@@ -3,10 +3,30 @@ const fs = require('fs');
 const path = require('path');
 const { op } = require('./main');
 const process = require('process');
+const _url = require('url');
 let port = process.env.PORT || 8020;
 let server;
-op.initialize({ name: "node", readConfig, writeConfig });
-const CONFIG_FILE_PATH = fs.existsSync("/etc") ? "/etc/onepoint_config.json" : path.resolve(__dirname, '../config.json');
+let config_file_path;
+
+const CONFIG_FILE_PATHS = [
+    path.resolve('/', 'etc/onepoint_config.json'),
+    path.resolve(__dirname, '../../config.json'),
+    path.resolve(__dirname, '../config2.json')
+];
+
+op.initialize({
+    name: "node",
+    readConfig,
+    writeConfig,
+    firstInstall,
+    installParam: [{
+        name: 'x-node-config-path',
+        select: CONFIG_FILE_PATHS,
+        desc: '配置文件存放的位置',
+        required: true
+    }]
+});
+
 module.exports = () => {
     if (server) server.close();
     server = http.createServer((req, res) => {
@@ -23,7 +43,8 @@ module.exports = () => {
         }
         async function handleReq(body) {
             try {
-                let r = await op.handleRaw(req.method, req.url, req.headers, body, req.connection.remoteAddress);
+                req.headers['x-real-ip'] = req.headers['x-real-ip'] || req.connection.remoteAddress;
+                let r = await op.handleRaw(req.method, _url.parse(req.url).pathname, req.headers, body, _url.parse(req.url).query);
                 res.writeHead(r.statusCode, r.headers);
                 if (typeof r.body.pipe === 'function') r.body.pipe(res);
                 else res.end(r.body);
@@ -35,20 +56,37 @@ module.exports = () => {
             }
         }
     }).listen(port);
+    console.log('OnePoint is running at http://localhost:' + port);
 }
 module.exports();
-console.log('OnePoint is running at http://localhost:' + port);
 
 async function readConfig() {
-    let p = (fs.existsSync(CONFIG_FILE_PATH)) ? CONFIG_FILE_PATH : path.resolve(__dirname, '../config.json');
-    return JSON.parse(fs.readFileSync(p, 'utf8'));
+    for (let path of CONFIG_FILE_PATHS) {
+        if (fs.existsSync(path)) {
+            config_file_path = path;
+            console.log('read config from:' + config_file_path);
+            return JSON.parse(fs.readFileSync(path, 'utf8'));
+        }
+    }
+    throw new Error("CONFIG_FILE_PATHS is invalid");
 }
 
 async function writeConfig(config) {
     return new Promise((resolve, reject) => {
-        fs.writeFile(CONFIG_FILE_PATH, JSON.stringify(config, null, 2), (err) => {
+        fs.writeFile(config_file_path, JSON.stringify(config, null, 2), (err) => {
             if (err) reject(err);
             else resolve();
         })
     });
+}
+
+async function firstInstall(config) {
+    config_file_path = config.G_CONFIG['x-node-config-path'];
+    if (!CONFIG_FILE_PATHS.includes(config_file_path)) throw new Error("config_file_path is invalid: " + config_file_path);
+    for (let path of CONFIG_FILE_PATHS) {
+        if (fs.existsSync(path)) fs.unlinkSync(path);
+        if (config_file_path === path) break;
+    }
+    await writeConfig(config);
+    return 'install success';
 }

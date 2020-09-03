@@ -1,21 +1,51 @@
 'use strict';
-const { Msg } = require('../utils/msgutils');
-const { OneDrive } = require('../lib/onedriveAPI');
+const {
+	Msg
+} = require('../utils/msgutils');
+const {
+	OneDrive
+} = require('../lib/onedriveAPI');
 
 let onedrive;
-let _cache;
-let mconfig;
 
-exports.ls = ls;
+exports.configParam = [{
+	name: 'refresh_token',
+	required: true,
+	type: 'textarea',
+	desc: '刷新令牌 refresh_token : 可从 https://point.onesrc.cn/oauth2 获取'
+},
+{
+	name: 'root',
+	desc: '根路径, 请保证末尾不是 "/"; 示例 /a/b/c 表示只选择 /a/b/c 路径下的文件展示使用, 其他对外不可见'
+},
+{
+	name: 'oauth',
+	desc: '如使用世纪互联请填1, 否则不填'
+}, {
+	name: 'api_url',
+	desc: '如使用共享盘请填写带有共享盘id的完整链接, 请保证末尾是 "/"; 示例 https://graph.microsoft.com/v1.0/drives/b!9WuGvU98R06cKgwSEDInU_UZxi9WbrpKkJdRwfiVSrZfFsQxgwWCQYUMmTVoDnq_/'
+}, {
+	name: 'client_id',
+	desc: '如使用自注册应用程序填写, 否则不填'
+}, {
+	name: 'client_secret',
+	desc: '如果使用自注册应用程序填写, 否则不填'
+}];
+
+exports.commands = ['ls', 'mkdir', 'mv', 'cp', 'rm', 'ren', 'touch', 'upload'];
+
+
+
+
 async function ls(path, skiptoken) {
 	try {
-		if (!path.endsWith('/')) {//处理文件情况
+		if (!path.endsWith('/')) { //处理文件情况
 			let data = await onedrive.msGetItemInfo(path);
 			return Msg.file({
 				type: 0,
 				name: data['name'],
 				size: data['size'],
-				mime: data['file']['mimeType'],//@info 暂时不处理目录不规范的情况,直接throw
+				mime: data['file']['mimeType'], //@info 暂时不处理目录不规范的情况,直接throw
 				time: data['lastModifiedDateTime']
 			}, data['@microsoft.graph.downloadUrl'] || data['@content.downloadUrl']);
 		}
@@ -45,66 +75,37 @@ async function ls(path, skiptoken) {
 	}
 }
 
-
-exports.find = find;
-async function find(text) {
-	let data = await onedrive.msSearch(text);
-	if (data.value.length === 0) return Msg.list([]);
-	let reg = new RegExp('.+/Documents' + (mconfig.root || '') + '/(.+)');
-	let list = [];
-	data.value.forEach((e) => {
-		let ma = reg.exec(e.webUrl);
-		if (!ma || !ma[1]) return;
-		list.push({
-			type: e['file'] ? 0 : 1,
-			name: ma[1],
-			size: e['size'],
-			mime: e['file'] ? e['file']['mimeType'] : '',
-			time: e['lastModifiedDateTime']
-		});
-	});
-	return Msg.list(list);
-}
-
-
-exports.mkdir = mkdir;
 async function mkdir(path, name) {
 	await onedrive.msMkdir(path, name);
 	return Msg.info(201);
 }
 
-exports.mv = mv;
 async function mv(srcPath, desPath) {
 	await onedrive.msMove(srcPath, desPath);
 	return Msg.info(200);
 }
 
-exports.cp = cp;
 async function cp(srcPath, desPath) {
 	await onedrive.msCopy(srcPath, desPath);
 	return Msg.info(200);
 }
 
-exports.rm = rm;
 async function rm(path) {
 	await onedrive.msDelete(path);
 	return Msg.info(204);
 }
 
-exports.ren = ren;
 async function ren(path, name) {
 	await onedrive.msRename(path, name);
 	return Msg.info(200);
 }
 
-exports.touch = touch;
 async function touch(path, filename, content) {
 	await onedrive.msUpload(path, filename, content);
 	return Msg.info(201);
 }
 
-exports.upload = upload;
-async function upload(filePath, fileSystemInfo) {
+async function upload(filePath, fileSystemInfo, _cache) {
 	let k = filePath + JSON.stringify(fileSystemInfo);
 	if (_cache[k] && new Date(_cache[k].expirationDateTime) > new Date()) return Msg.html_json(200, _cache[k]);
 	let res = await onedrive.msUploadSession(filePath, fileSystemInfo);
@@ -113,9 +114,7 @@ async function upload(filePath, fileSystemInfo) {
 }
 
 exports.func = async (spConfig, cache, event, context) => {
-	_cache = cache;
-	mconfig = spConfig;
-	onedrive = new OneDrive(spConfig['refresh_token'], spConfig['oauth'], spConfig['oauth_opt']);
+	onedrive = new OneDrive(spConfig['refresh_token'], spConfig['oauth'], spConfig);
 	await onedrive.init((data) => {
 		if ((spConfig['expires_date'] || 0) < Date.now()) {
 			console.log(spConfig);
@@ -146,7 +145,7 @@ exports.func = async (spConfig, cache, event, context) => {
 		case 'touch':
 			return await touch(p2, cmdData.name, cmdData.content);
 		case 'upload':
-			return await upload(p2, cmdData.fileSystemInfo);
+			return await upload(p2, cmdData.fileSystemInfo, cache);
 		case 'find':
 			return await find(cmdData.text);
 		default:

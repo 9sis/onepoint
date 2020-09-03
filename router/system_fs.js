@@ -2,7 +2,16 @@ const { fs, getmime, path } = require("../utils/nodeutils");
 const { Msg, urlSpCharEncode } = require('../utils/msgutils');
 const process = require('process');
 
+exports.configParam = [{
+    name: 'root',
+    desc: '根目录路径, 请保证结尾不是 "/" 示例: /a/b/c '
+}];
+
+exports.commands = ['ls', 'mkdir'];
+
+
 exports.ls = ls;
+
 function ls(p2) {
     return new Promise((resolve) => {
         fs.stat(p2, (err, stats) => {
@@ -57,7 +66,6 @@ function ls(p2) {
     });
 }
 
-exports.mkdir = mkdir;
 function mkdir(path, name) {
     return new Promise((resolve, reject) => {
         fs.mkdir(path + name, (err) => {
@@ -107,6 +115,7 @@ exports.func = async (spConfig, cache, event) => {
             });
         case 'upload':
             //@experiment
+            throw new Error('no');
             event.noRender = true;
             if (!event.isadmin) return Msg.info(403, Msg.constants.Permission_denied);
             if (fs.existsSync(p2)) return Msg.info(403, Msg.constants.File_already_exists);

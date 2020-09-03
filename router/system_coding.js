@@ -9,7 +9,22 @@ const {
 
 let coding;
 
-exports.ls = ls;
+exports.configParam = [{
+    name: 'url',
+    required: true,
+    desc: 'api 地址: 示例 https://ukuq.coding.net/api/user/ukuq/project/onepoint/folder/ 自己看着改吧 不再提供额外教程'
+}, {
+    name: 'token',
+    required: true,
+    desc: '访问令牌: 获取地址 https://ukuq.coding.net/user/account/setting/tokens'
+}, {
+    name: 'root',
+    desc: '根目录(默认不填) 或者文件夹id'
+}];
+
+
+exports.commands = ['ls'];
+
 async function ls(path, page) {
     let matcher = /^(.*)\/([^/]*)$/.exec(path);
     let data = (await coding._list(await coding.getIDByPath(matcher[1]), page)).data;
@@ -55,11 +70,11 @@ exports.func = async (spConfig, cache, event) => {
     }
 }
 class Coding {
-    constructor(url, token, root = 0, cache = {}) {
+    constructor(url, token, root, cache = {}) {
         this.url = url;
         this.token = token;
         this.icache = cache;
-        this.root = root;
+        this.root = root || 0;
     }
     async _list(parentId, page = 1, keyword = '') {
         if (isNaN(Number(page))) page = 1;

@@ -3,11 +3,17 @@ const path = require('path');
 const { op } = require('onepoint');
 const axios = require("axios");
 
-// 部署now时, 配置文件和本文件为同目录
-let _config = JSON.parse(fs.readFileSync(path.resolve(__dirname, './config.json'), 'utf8'));
-
-if (_config.G_CONFIG['x-nowsh-token']) op.initialize({ name: "now.sh", readConfig, writeConfig });//支持保存功能
-else op.initialize({ name: "now.sh", readConfig });//只读,未提供保存功能
+op.initialize({
+    name: "now.sh",
+    readConfig,
+    writeConfig,
+    firstInstall,
+    installParam: [{
+        name: 'x-nowsh-token',
+        desc: '获取 token: https://vercel.com/account/tokens',
+        required: true
+    }]
+});//支持保存功能
 
 module.exports = async (req, res) => {
     try {
@@ -24,9 +30,36 @@ module.exports = async (req, res) => {
 };
 
 async function readConfig() {
-    return JSON.parse(fs.readFileSync(path.resolve(__dirname, './config.json'), 'utf8'));
+    // 部署now时, 配置文件和本文件为同目录
+    let config = JSON.parse(fs.readFileSync(path.resolve(__dirname, './config.json'), 'utf8'));
+    if (!config.G_CONFIG['x-nowsh-token']) throw new Error("configuration is invalid: x-nowsh-token");
+    return config;
 }
 
 async function writeConfig(config) {
-    await axios.default.post("https://point.onesrc.cn/github/nowsh-deploy", { token: config.G_CONFIG['x-nowsh-token'], config_json: JSON.stringify(config, null, 2) });
+    let nowConfig = {
+        "name": "onepoint",
+        "files": [
+            { "file": "api/index_now.js", "data": "" },
+            { "file": "api/package.json", "data": "" },
+            { "file": "api/config.json", "data": "" }
+        ],
+        "functions": {
+            "api/index_now.js": { "maxDuration": 10 }
+        },
+        "routes": [{ "src": "/.*", "dest": "api/index_now.js" }],
+        "projectSettings": { "framework": null }
+    };
+    nowConfig.files.forEach(e => {
+        if (e.file === 'api/config.json') e.data = JSON.stringify(config);
+        else e.data = fs.readFileSync(path.resolve(__dirname, e.file.slice(4)), 'utf8');
+    })
+    await axios.default.post("https://api.vercel.com/v12/now/deployments", nowConfig, { headers: { Authorization: `Bearer ${token}` } });
+    //old api: await axios.default.post("https://point.onesrc.cn/github/nowsh-deploy", { token: config.G_CONFIG['x-nowsh-token'], config_json: JSON.stringify(config, null, 2) });
+}
+
+async function firstInstall(config) {
+    if (!config.G_CONFIG['x-nowsh-token']) throw new Error("configuration parameter missing: x-nowsh-token");
+    await writeConfig(config);
+    return 'install success';
 }
